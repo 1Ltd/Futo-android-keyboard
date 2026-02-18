@@ -1,0 +1,46 @@
+name: FUTO-Auto-Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # CRITICAL for FUTO - pulls in all the code
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Create Temporary Signing Key
+        run: |
+          keytool -genkey -v -keystore release.keystore -alias futokey -keyalg RSA -keysize 2048 -validity 10000 -storepass password123 -keypass password123 -dname "CN=FutoUser, OU=Dev, O=Futo, L=World, S=World, C=US"
+
+      - name: Build FUTO APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleStableRelease
+
+      - name: Sign the APK
+        run: |
+          # Finds the apksigner tool
+          APK_SIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | tail -1)
+          
+          # Finds the 'Stable' release APK
+          UNSIGNED_APK=$(find app/build/outputs/apk -name "*stable-release-unsigned.apk" | head -n 1)
+          
+          # Sign it
+          $APK_SIGNER sign --ks release.keystore --ks-pass pass:password123 --key-pass pass:password123 --out FUTO-Keyboard-Signed.apk "$UNSIGNED_APK"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FUTO-Keyboard-Package
+          path: FUTO-Keyboard-Signed.apk
